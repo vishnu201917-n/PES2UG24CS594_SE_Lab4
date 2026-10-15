@@ -6,15 +6,22 @@ GROUND_Y = HEIGHT - 40
 INTERCEPTOR_SPEED, EXPLOSION_MAX, EXPLOSION_TIME = 420, 45, 1.2
 AMMO_PER_BATTERY = 10
 
+EFFECTS = {"shake": 0.0, "message": "", "message_time": 0.0}
+
 
 def explosion_color(progress):
-    progress = max(0.0, min(1.0, progress))
-    heat = 1.0 - abs(2 * progress - 1)
-    return (255, int(255 * heat), int(255 * heat))
+    p = max(0.0, min(1.0, progress))
+    if p < 0.5:
+        t = p / 0.5  # growing: yellow -> white
+        return (255, 200 + int(55 * t), 80 + int(175 * t))
+    t = (p - 0.5) / 0.5  # shrinking: white -> red
+    return (int(255 - 115 * t), int(255 * (1 - t)), int(255 * (1 - t)))
 
 
 def on_city_destroyed(city):
-    print(f"WARNING: City at x={city.pos.x:.0f} has been destroyed!")
+    EFFECTS["shake"] = 0.4
+    EFFECTS["message"] = "CITY DESTROYED!"
+    EFFECTS["message_time"] = 1.5
 
 
 def city_repair_threshold():
@@ -100,22 +107,21 @@ class Game:
         for battery in self.batteries:
             battery.alive, battery.ammo = True, AMMO_PER_BATTERY
 
-    
     def nearest_battery(self, target):
         available = [b for b in self.batteries if b.alive and b.ammo > 0]
         if not available:
             return None
         return min(available, key=lambda b: b.pos.distance_squared_to(target))
-        
 
     def launch(self, target):
         target = pygame.Vector2(target)
         if self.state != "play" or target.y > GROUND_Y - 20:
             return
         battery = self.nearest_battery(target)
-        if battery is not None:
-            battery.ammo -= 1
-            self.interceptors.append(Interceptor(battery.pos, target))
+        if battery is None:
+            return
+        battery.ammo -= 1
+        self.interceptors.append(Interceptor(battery.pos, target))
 
     def spawn_missile(self):
         targets = [c for c in self.cities if c.alive] + [b for b in self.batteries if b.alive]
@@ -195,6 +201,11 @@ class Game:
             pygame.draw.circle(screen, color, explosion.pos, max(1, int(explosion.radius)))
         hud = self.font.render(f"Score {self.score}   Wave {self.wave}   Click to fire   R = reset", True, (240, 240, 240))
         screen.blit(hud, (10, 8))
+        if EFFECTS["message_time"] > 0:
+            alive = sum(c.alive for c in self.cities)
+            text = EFFECTS["message"] + (f"  Only {alive} left!" if alive <= 2 else "")
+            warn = self.font.render(text, True, (255, 80, 80))
+            screen.blit(warn, warn.get_rect(center=(WIDTH // 2, 50)))
         if self.state == "lose":
             label = self.font.render("ALL CITIES LOST - Press R", True, (255, 255, 120))
             screen.blit(label, label.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
@@ -203,6 +214,7 @@ class Game:
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    canvas = pygame.Surface((WIDTH, HEIGHT))
     pygame.display.set_caption("Missile Command")
     clock = pygame.time.Clock()
     game = Game()
@@ -217,7 +229,15 @@ def main():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 game.reset()
         game.update(dt)
-        game.draw(screen)
+        EFFECTS["shake"] = max(0.0, EFFECTS["shake"] - dt)
+        EFFECTS["message_time"] = max(0.0, EFFECTS["message_time"] - dt)
+        game.draw(canvas)
+        offset = (0, 0)
+        if EFFECTS["shake"] > 0:
+            mag = int(12 * EFFECTS["shake"] / 0.4) + 1
+            offset = (random.randint(-mag, mag), random.randint(-mag, mag))
+        screen.fill((0, 0, 0))
+        screen.blit(canvas, offset)
         pygame.display.flip()
     pygame.quit()
 
