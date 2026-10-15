@@ -8,18 +8,17 @@ AMMO_PER_BATTERY = 10
 
 
 def explosion_color(progress):
-    """Return an (r, g, b) colour for an explosion (progress 0..1 of its life), or None for the default."""
-    pass
+    progress = max(0.0, min(1.0, progress))
+    heat = 1.0 - abs(2 * progress - 1)
+    return (255, int(255 * heat), int(255 * heat))
 
 
 def on_city_destroyed(city):
-    """Called when a city is hit; add screen shake, sounds, or a game-over warning here."""
-    pass
+    print(f"WARNING: City at x={city.pos.x:.0f} has been destroyed!")
 
 
 def city_repair_threshold():
-    """Return a score value at which a destroyed city is rebuilt, or None to disable city repair."""
-    pass
+    return 2000
 
 
 class Battery:
@@ -101,15 +100,20 @@ class Game:
         for battery in self.batteries:
             battery.alive, battery.ammo = True, AMMO_PER_BATTERY
 
+    
     def nearest_battery(self, target):
-        return min(self.batteries, key=lambda b: b.pos.distance_squared_to(target))
+        available = [b for b in self.batteries if b.alive and b.ammo > 0]
+        if not available:
+            return None
+        return min(available, key=lambda b: b.pos.distance_squared_to(target))
+        
 
     def launch(self, target):
         target = pygame.Vector2(target)
         if self.state != "play" or target.y > GROUND_Y - 20:
             return
         battery = self.nearest_battery(target)
-        if battery.alive and battery.ammo > 0:
+        if battery is not None:
             battery.ammo -= 1
             self.interceptors.append(Interceptor(battery.pos, target))
 
